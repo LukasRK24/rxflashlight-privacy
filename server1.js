@@ -9,18 +9,16 @@ function parseRecentEpisodes(html, baseUrl) {
     var sectionMatch = /Programación([\s\S]*?)<div class="mi-boton-container">/.exec(html);
     var content = sectionMatch ? sectionMatch[1] : html;
     
-    // Expresión regular actualizada para aceptar cualquier baseUrl (no hardcodea jkanime.net)
-    var regex = /<a[^>]+href=["']https?:\/\/[^\/]+\/([^/"#?]+)\/(?:\d+\/)?["'][^>]*>(?:(?!<\/a>)[\s\S])*?<img[^>]+src=["']([^"']+)["'][^>]*>(?:(?!<\/a>)[\s\S])*?h5[^>]*>([^<]+)<\/h5>/gi;
+    var regex = /<a[^>]+href=["'](https?:\/\/[^\/]+)?\/([^/"#?]+)\/(?:\d+\/)?["'][^>]*>(?:(?!<\/a>)[\s\S])*?<img[^>]+src=["']([^"']+)["'][^>]*>(?:(?!<\/a>)[\s\S])*?h5[^>]*>([^<]+)<\/h5>/gi;
     var match;
-    
     while ((match = regex.exec(content)) !== null) {
-        var slug = match[1];
+        var slug = match[2];
         results.push({
             slug: slug,
             id: slug,
             url: baseUrl + "/" + slug + "/",
-            title: match[3].trim(),
-            thumbnail: match[2],
+            title: match[4].trim(),
+            thumbnail: match[3],
             type: "TV",
             status: "En emisión"
         });
@@ -38,24 +36,19 @@ function parseSearch(html, baseUrl) {
     var results = [];
     var itemRegex = /<div class="anime__item">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
     var itemMatch;
-    
     while ((itemMatch = itemRegex.exec(html)) !== null) {
         var itemHtml = itemMatch[1];
         var slug = "", title = "", imgUrl = "", type = "TV", status = "Desconocido";
-        
         var linkMatch = /href="([^"]+)"/i.exec(itemHtml);
-        if (linkMatch) {
+        if (linkMatch) { 
              slug = linkMatch[1].replace(/https?:\/\/[^\/]+\//g, '').replace(/\//g, '');
         }
         var titleMatch = /<h5>\s*(?:<a[^>]*>)?([^<]*?)(?:<\/a>)?\s*<\/h5>/i.exec(itemHtml);
         if (titleMatch) title = titleMatch[1].trim();
-        
         var imgMatch = /data-setbg="([^"]+)"/i.exec(itemHtml);
         if (imgMatch) imgUrl = imgMatch[1];
-        
         var typeMatch = /<li>([^<]+)<\/li>/i.exec(itemHtml);
         if (typeMatch) type = typeMatch[1].trim();
-        
         if (slug && title) {
             results.push({ 
                 slug: slug, 
@@ -118,20 +111,32 @@ function parseAnimeDetails(html, url) {
 
 function getEpisodesRequest(baseUrl, animeId, page) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
-    return baseUrl + "/ajax/pagination_episodes/" + animeId + "/" + page + "/";
+    // Usamos la nueva ruta /ajax/episodes/
+    return baseUrl + "/ajax/episodes/" + animeId + "/" + page + "/";
 }
 
-function parseEpisodes(responseString, animeId) {
-    var arr = JSON.parse(responseString);
+function parseEpisodes(responseString, slug) {
     var results = [];
-    for (var i = 0; i < arr.length; i++) {
-        var ep = arr[i];
-        results.push({
-            number: ep.number,
-            title: "Episodio " + ep.number,
-            url: "/" + animeId + "/" + ep.number + "/",
-            imageUrl: ""
-        });
+    try {
+        var obj = JSON.parse(responseString);
+        var arr = obj.data || obj.episodes || obj.ep || obj;
+        
+        if (!Array.isArray(arr)) {
+             arr = [arr];
+        }
+        
+        for (var i = 0; i < arr.length; i++) {
+            var ep = arr[i];
+            if (!ep) continue;
+            var num = ep.number || ep.id || (i + 1);
+            results.push({
+                number: num,
+                title: "Episodio " + num,
+                url: "/" + slug + "/" + num + "/",
+                imageUrl: ""
+            });
+        }
+    } catch(e) {
     }
     return JSON.stringify(results);
 }
@@ -147,13 +152,11 @@ function parseVideoServers(html) {
     var namesRegex = /<a[^>]*data-id="[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
     var nameMatch;
     var nameAreaMatch = /<div class="anime__video__player__box">([\s\S]*?)<\/div>/.exec(html);
-    
     if (nameAreaMatch) {
         while ((nameMatch = namesRegex.exec(nameAreaMatch[1])) !== null) {
             names.push(nameMatch[1].trim().replace(/<[^>]*>?/gm, ''));
         }
     }
-    
     if (scriptMatch) {
         var scriptContent = scriptMatch[1];
         var videoRegex = /video\[(\d+)\] = '(.*?)';/g;
@@ -165,10 +168,12 @@ function parseVideoServers(html) {
             if (srcMatch) {
                 var url = srcMatch[1];
                 if (url.startsWith("//")) url = "https:" + url;
+                
                 var name = "Server " + index;
                 if (index > 0 && index - 1 < names.length) {
                     name = names[index - 1];
                 }
+                
                 servers.push({
                     name: name,
                     url: url
