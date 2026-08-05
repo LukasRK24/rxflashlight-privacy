@@ -31,43 +31,22 @@ function getSearchRequest(baseUrl, query, page) {
     return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + page + "/";
 }
 
-function getFilterRequest(baseUrl, query, genre, type, status, page) {
-    if (!baseUrl) baseUrl = "https://jkanime.net";
-    // Si no hay filtros, es una búsqueda normal
-    if (!genre && !type && !status) {
-        var safeQuery = query ? query.replace(/\s+/g, "_") : "";
-        return baseUrl + "/buscar/" + safeQuery + "/1/";
-    }
-    
-    // Si hay filtros, usamos el directorio
-    var url = baseUrl + "/directorio/?";
-    if (genre) url += "genero=" + encodeURIComponent(genre) + "&";
-    if (type) url += "tipo=" + encodeURIComponent(type) + "&";
-    if (status) url += "estado=" + encodeURIComponent(status) + "&";
-    
-    return url;
-}
-
 function parseSearch(html, baseUrl) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
     var results = [];
-    // Este Regex funciona tanto para "/buscar/" como para "/directorio/"
     var itemRegex = /<div class="anime__item">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
     var itemMatch;
-    
     while ((itemMatch = itemRegex.exec(html)) !== null) {
         var itemHtml = itemMatch[1];
         var slug = "", title = "", imgUrl = "", type = "TV", status = "Desconocido";
         var linkMatch = /href="([^"]+)"/i.exec(itemHtml);
-        if (linkMatch) { 
-             slug = linkMatch[1].replace(/https?:\/\/[^\/]+\//g, '').replace(/\//g, '');
+        if (linkMatch) {
+              slug = linkMatch[1].replace(/https?:\/\/[^\/]+\//g, '').replace(/\//g, '');
         }
         var titleMatch = /<h5>\s*(?:<a[^>]*>)?([^<]*?)(?:<\/a>)?\s*<\/h5>/i.exec(itemHtml);
         if (titleMatch) title = titleMatch[1].trim();
-        
         var imgMatch = /data-setbg="([^"]+)"/i.exec(itemHtml);
         if (imgMatch) imgUrl = imgMatch[1];
-        
         var typeMatch = /<li>([^<]+)<\/li>/i.exec(itemHtml);
         if (typeMatch) type = typeMatch[1].trim();
         
@@ -92,6 +71,7 @@ function getAnimeDetailsRequest(url) {
 
 function parseAnimeDetails(html, url) {
     var detail = { genres: [] };
+    
     var titleMatch = /<h3>([^<]+)<\/h3>/i.exec(html);
     if (titleMatch) detail.title = titleMatch[1].trim();
     
@@ -128,6 +108,7 @@ function parseAnimeDetails(html, url) {
             detail.genres.push(gM[1].trim());
         }
     }
+    
     return JSON.stringify(detail);
 }
 
@@ -142,8 +123,8 @@ function parseEpisodes(responseString, slug) {
         var obj = JSON.parse(responseString);
         var arr = obj.data || obj.episodes || obj.ep || obj;
         
-        if (!Array.isArray(arr)) {
-             arr = [arr];
+        if (!Array.isArray(arr)) { 
+            arr = [arr]; 
         }
         
         for (var i = 0; i < arr.length; i++) {
@@ -172,12 +153,14 @@ function parseVideoServers(html) {
     var names = [];
     var namesRegex = /<a[^>]*data-id="[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
     var nameMatch;
+    
     var nameAreaMatch = /<div class="anime__video__player__box">([\s\S]*?)<\/div>/.exec(html);
     if (nameAreaMatch) {
         while ((nameMatch = namesRegex.exec(nameAreaMatch[1])) !== null) {
             names.push(nameMatch[1].trim().replace(/<[^>]*>?/gm, ''));
         }
     }
+    
     if (scriptMatch) {
         var scriptContent = scriptMatch[1];
         var videoRegex = /video\[(\d+)\] = '(.*?)';/g;
@@ -185,6 +168,7 @@ function parseVideoServers(html) {
         while ((match = videoRegex.exec(scriptContent)) !== null) {
             var index = parseInt(match[1]);
             var iframeHtml = match[2];
+            
             var srcMatch = /src="([^"]+)"/.exec(iframeHtml);
             if (srcMatch) {
                 var url = srcMatch[1];
@@ -203,4 +187,71 @@ function parseVideoServers(html) {
         }
     }
     return JSON.stringify(servers);
+}
+
+// ==========================================
+// NUEVAS FUNCIONES DE FILTROS DINÁMICOS
+// ==========================================
+
+function getFiltersRequest(baseUrl) {
+    if (!baseUrl) baseUrl = "https://jkanime.net";
+    return baseUrl + "/directorio/";
+}
+
+function parseFilters(html) {
+    var filters = { genres: [], types: [], statuses: [], languages: [] };
+    
+    // Parsear géneros (y sacar idioma "latino" si existe en las opciones)
+    var genreSelectMatch = /<select name="genero">([\s\S]*?)<\/select>/.exec(html);
+    if (genreSelectMatch) {
+        var optionsRegex = /<option value=['"]([^'"]+)['"][^>]*>([^<]+)<\/option>/gi;
+        var match;
+        while ((match = optionsRegex.exec(genreSelectMatch[1])) !== null) {
+            if (match[1] === "latino") {
+                filters.languages.push({ id: match[1], name: match[2].trim() });
+            } else {
+                filters.genres.push({ id: match[1], name: match[2].trim() });
+            }
+        }
+    }
+    
+    // Parsear tipos (TV, Ovas, Películas, etc.)
+    var typeSelectMatch = /<select name="tipo">([\s\S]*?)<\/select>/.exec(html);
+    if (typeSelectMatch) {
+        var optionsRegex = /<option[^>]*value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
+        var match;
+        while ((match = optionsRegex.exec(typeSelectMatch[1])) !== null) {
+            filters.types.push({ id: match[1], name: match[2].trim() });
+        }
+    }
+    
+    // Parsear estados (En emisión, finalizado, etc.)
+    var statusSelectMatch = /<select name="estado">([\s\S]*?)<\/select>/.exec(html);
+    if (statusSelectMatch) {
+        var optionsRegex = /<option[^>]*value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
+        var match;
+        while ((match = optionsRegex.exec(statusSelectMatch[1])) !== null) {
+            filters.statuses.push({ id: match[1], name: match[2].trim() });
+        }
+    }
+    
+    return JSON.stringify(filters);
+}
+
+function getFilterRequest(baseUrl, query, genre, type, status, page) {
+    if (!baseUrl) baseUrl = "https://jkanime.net";
+    
+    // Si no hay filtros seleccionados, hacer una búsqueda normal
+    if (!genre && !type && !status) {
+        if (!query) query = "";
+        return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + (page || 1) + "/";
+    }
+    
+    // Búsqueda por directorio usando los filtros
+    var url = baseUrl + "/directorio/?";
+    if (genre) url += "genero=" + genre + "&";
+    if (type) url += "tipo=" + type + "&";
+    if (status) url += "estado=" + status + "&";
+    
+    return url;
 }
