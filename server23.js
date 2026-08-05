@@ -31,11 +31,30 @@ function getSearchRequest(baseUrl, query, page) {
     return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + page + "/";
 }
 
+function getFilterRequest(baseUrl, query, genre, type, status, page) {
+    if (!baseUrl) baseUrl = "https://jkanime.net";
+    // Si no hay filtros, es una búsqueda normal
+    if (!genre && !type && !status) {
+        var safeQuery = query ? query.replace(/\s+/g, "_") : "";
+        return baseUrl + "/buscar/" + safeQuery + "/1/";
+    }
+    
+    // Si hay filtros, usamos el directorio
+    var url = baseUrl + "/directorio/?";
+    if (genre) url += "genero=" + encodeURIComponent(genre) + "&";
+    if (type) url += "tipo=" + encodeURIComponent(type) + "&";
+    if (status) url += "estado=" + encodeURIComponent(status) + "&";
+    
+    return url;
+}
+
 function parseSearch(html, baseUrl) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
     var results = [];
+    // Este Regex funciona tanto para "/buscar/" como para "/directorio/"
     var itemRegex = /<div class="anime__item">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
     var itemMatch;
+    
     while ((itemMatch = itemRegex.exec(html)) !== null) {
         var itemHtml = itemMatch[1];
         var slug = "", title = "", imgUrl = "", type = "TV", status = "Desconocido";
@@ -45,10 +64,13 @@ function parseSearch(html, baseUrl) {
         }
         var titleMatch = /<h5>\s*(?:<a[^>]*>)?([^<]*?)(?:<\/a>)?\s*<\/h5>/i.exec(itemHtml);
         if (titleMatch) title = titleMatch[1].trim();
+        
         var imgMatch = /data-setbg="([^"]+)"/i.exec(itemHtml);
         if (imgMatch) imgUrl = imgMatch[1];
+        
         var typeMatch = /<li>([^<]+)<\/li>/i.exec(itemHtml);
         if (typeMatch) type = typeMatch[1].trim();
+        
         if (slug && title) {
             results.push({ 
                 slug: slug, 
@@ -63,34 +85,6 @@ function parseSearch(html, baseUrl) {
     }
     return JSON.stringify(results);
 }
-
-// ==========================================
-// NUEVAS FUNCIONES PARA FILTROS (DIRECTORIO)
-// ==========================================
-function getFilterRequest(baseUrl, query, genre, type, status, page) {
-    if (!baseUrl) baseUrl = "https://jkanime.net";
-    
-    // Si no hay filtros seleccionados (solo texto), hacer una búsqueda normal
-    if (!genre && !type && !status && query) {
-        return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + (page || 1) + "/";
-    }
-    
-    // Si hay filtros, usar el directorio avanzado
-    var url = baseUrl + "/directorio/?";
-    if (genre) url += "genero=" + encodeURIComponent(genre) + "&";
-    if (type) url += "tipo=" + encodeURIComponent(type) + "&";
-    if (status) url += "estado=" + encodeURIComponent(status) + "&";
-    
-    // Se podría agregar "&orden=" o "&page=" si JKAnime lo soporta por GET
-    return url;
-}
-
-function parseFilter(html, baseUrl) {
-    // El directorio de jkanime usa exactamente la misma estructura de HTML que las búsquedas.
-    // Por lo tanto, podemos reutilizar el parseador de búsqueda para ahorrar código.
-    return parseSearch(html, baseUrl);
-}
-// ==========================================
 
 function getAnimeDetailsRequest(url) {
     return url;
