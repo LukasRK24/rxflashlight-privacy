@@ -64,6 +64,34 @@ function parseSearch(html, baseUrl) {
     return JSON.stringify(results);
 }
 
+// ==========================================
+// NUEVAS FUNCIONES PARA FILTROS (DIRECTORIO)
+// ==========================================
+function getFilterRequest(baseUrl, query, genre, type, status, page) {
+    if (!baseUrl) baseUrl = "https://jkanime.net";
+    
+    // Si no hay filtros seleccionados (solo texto), hacer una búsqueda normal
+    if (!genre && !type && !status && query) {
+        return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + (page || 1) + "/";
+    }
+    
+    // Si hay filtros, usar el directorio avanzado
+    var url = baseUrl + "/directorio/?";
+    if (genre) url += "genero=" + encodeURIComponent(genre) + "&";
+    if (type) url += "tipo=" + encodeURIComponent(type) + "&";
+    if (status) url += "estado=" + encodeURIComponent(status) + "&";
+    
+    // Se podría agregar "&orden=" o "&page=" si JKAnime lo soporta por GET
+    return url;
+}
+
+function parseFilter(html, baseUrl) {
+    // El directorio de jkanime usa exactamente la misma estructura de HTML que las búsquedas.
+    // Por lo tanto, podemos reutilizar el parseador de búsqueda para ahorrar código.
+    return parseSearch(html, baseUrl);
+}
+// ==========================================
+
 function getAnimeDetailsRequest(url) {
     return url;
 }
@@ -111,7 +139,6 @@ function parseAnimeDetails(html, url) {
 
 function getEpisodesRequest(baseUrl, animeId, page) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
-    // Usamos la nueva ruta /ajax/episodes/
     return baseUrl + "/ajax/episodes/" + animeId + "/" + page + "/";
 }
 
