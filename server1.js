@@ -1,7 +1,46 @@
-function getRecentEpisodesRequest(baseUrl) {
-    if (!baseUrl) baseUrl = "https://jkanime.net";
-    return baseUrl + "/";
+function getAiringAnime(baseUrl) {
+    var html = http.get(baseUrl + "/");
+    return parseRecentEpisodes(html, baseUrl);
 }
+
+function getGenreAnime(baseUrl, genreSlug) {
+    var html = http.get(baseUrl + "/genero/" + genreSlug.trim().toLowerCase() + "/");
+    return parseSearch(html, baseUrl);
+}
+
+function searchAnimeWithFilters(baseUrl, query, genre, type, status, page) {
+    var url = getFilterRequest(baseUrl, query, genre, type, status, page);
+    var html = http.get(url);
+    return parseSearch(html, baseUrl);
+}
+
+function searchAnime(baseUrl, query, page) {
+    var url = getSearchRequest(baseUrl, query, page);
+    var html = http.get(url);
+    return parseSearch(html, baseUrl);
+}
+
+function getAnimeDetails(baseUrl, slug) {
+    var url = baseUrl + "/" + slug + "/";
+    var html = http.get(url);
+    return parseAnimeDetails(html, url);
+}
+
+function getEpisodes(baseUrl, animeId, page) {
+    var url = getEpisodesRequest(baseUrl, animeId, page);
+    var jsonStr = http.get(url);
+    return parseEpisodes(jsonStr, animeId);
+}
+
+function getEpisodeServers(baseUrl, slug, episodeNumber) {
+    var url = getVideoServersRequest(baseUrl + "/" + slug + "/" + episodeNumber + "/");
+    var html = http.get(url);
+    return parseVideoServers(html);
+}
+
+// ==========================================
+// MÉTODOS DE PARSING
+// ==========================================
 
 function parseRecentEpisodes(html, baseUrl) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
@@ -18,7 +57,7 @@ function parseRecentEpisodes(html, baseUrl) {
             id: slug,
             url: baseUrl + "/" + slug + "/",
             title: match[4].trim(),
-            thumbnail: match[3],
+            imageUrl: match[3],
             type: "TV",
             status: "En emisión"
         });
@@ -28,7 +67,8 @@ function parseRecentEpisodes(html, baseUrl) {
 
 function getSearchRequest(baseUrl, query, page) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
-    return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + page + "/";
+    var q = query ? query.toString().trim().replace(/\s+/g, '_') : '';
+    return baseUrl + "/buscar/" + encodeURIComponent(q) + "/" + (page || 1) + "/";
 }
 
 function parseSearch(html, baseUrl) {
@@ -55,7 +95,7 @@ function parseSearch(html, baseUrl) {
                 slug: slug, 
                 id: slug, 
                 title: title, 
-                thumbnail: imgUrl, 
+                imageUrl: imgUrl, 
                 type: type, 
                 status: status, 
                 url: baseUrl + "/" + slug + "/" 
@@ -70,7 +110,7 @@ function getAnimeDetailsRequest(url) {
 }
 
 function parseAnimeDetails(html, url) {
-    var detail = { genres: [] };
+    var detail = { url: url, genres: [], episodes: [] };
     
     var titleMatch = /<h3>([^<]+)<\/h3>/i.exec(html);
     if (titleMatch) detail.title = titleMatch[1].trim();
@@ -79,7 +119,7 @@ function parseAnimeDetails(html, url) {
     if (!detail.title && ogTitle) detail.title = ogTitle[1].replace(" online - JKAnime", "").trim();
     
     var ogImg = /<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i.exec(html);
-    if (ogImg) detail.posterUrl = ogImg[1];
+    if (ogImg) detail.imageUrl = ogImg[1];
     
     var synMatch = /<p\s+[^>]*class=["']scroll["'][^>]*>([\s\S]*?)<\/p>/i.exec(html);
     if (synMatch) detail.synopsis = synMatch[1].replace(/<[^>]+>/g, "").trim();
@@ -91,7 +131,7 @@ function parseAnimeDetails(html, url) {
     if (statusMatch) detail.status = statusMatch[1].trim();
     
     var studioMatch = /<li>\s*<span>Studios:<\/span>([^<]+)<\/li>/i.exec(html);
-    if (studioMatch) detail.studios = studioMatch[1].trim();
+    if (studioMatch) detail.studio = studioMatch[1].trim();
     
     var airedMatch = /<li>\s*<span>Emitido:<\/span>([^<]+)<\/li>/i.exec(html);
     if (airedMatch) detail.aired = airedMatch[1].trim();
@@ -189,10 +229,6 @@ function parseVideoServers(html) {
     return JSON.stringify(servers);
 }
 
-// ==========================================
-// NUEVAS FUNCIONES DE FILTROS DINÁMICOS
-// ==========================================
-
 function getFiltersRequest(baseUrl) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
     return baseUrl + "/directorio/";
@@ -201,7 +237,6 @@ function getFiltersRequest(baseUrl) {
 function parseFilters(html) {
     var filters = { genres: [], types: [], statuses: [], languages: [] };
     
-    // Parsear géneros (y sacar idioma "latino" si existe en las opciones)
     var genreSelectMatch = /<select name="genero">([\s\S]*?)<\/select>/.exec(html);
     if (genreSelectMatch) {
         var optionsRegex = /<option value=['"]([^'"]+)['"][^>]*>([^<]+)<\/option>/gi;
@@ -215,7 +250,6 @@ function parseFilters(html) {
         }
     }
     
-    // Parsear tipos (TV, Ovas, Películas, etc.)
     var typeSelectMatch = /<select name="tipo">([\s\S]*?)<\/select>/.exec(html);
     if (typeSelectMatch) {
         var optionsRegex = /<option[^>]*value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
@@ -225,7 +259,6 @@ function parseFilters(html) {
         }
     }
     
-    // Parsear estados (En emisión, finalizado, etc.)
     var statusSelectMatch = /<select name="estado">([\s\S]*?)<\/select>/.exec(html);
     if (statusSelectMatch) {
         var optionsRegex = /<option[^>]*value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
@@ -241,17 +274,18 @@ function parseFilters(html) {
 function getFilterRequest(baseUrl, query, genre, type, status, page) {
     if (!baseUrl) baseUrl = "https://jkanime.net";
     
-    // Si no hay filtros seleccionados, hacer una búsqueda normal
     if (!genre && !type && !status) {
-        if (!query) query = "";
-        return baseUrl + "/buscar/" + encodeURIComponent(query) + "/" + (page || 1) + "/";
+        var q = query ? query.toString().trim().replace(/\s+/g, '_') : '';
+        return baseUrl + "/buscar/" + encodeURIComponent(q) + "/" + (page || 1) + "/";
     }
     
-    // Búsqueda por directorio usando los filtros
     var url = baseUrl + "/directorio/?";
     if (genre) url += "genero=" + genre + "&";
     if (type) url += "tipo=" + type + "&";
     if (status) url += "estado=" + status + "&";
+    if (query) url += "q=" + query.toString().trim().replace(/\s+/g, '_') + "&";
+    
+    url += "p=" + (page || 1);
     
     return url;
 }
